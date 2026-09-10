@@ -7,6 +7,7 @@ Code that must mean the same thing on every cloud.
 | `normalize.py` | `canonical_company_name`, `review_company_name`, `normalize_domain`, `vendor_key`, `LEGAL_SUFFIXES`, `DESCRIPTOR_TOKENS` | `vendor_key` is the cross-cloud join key. If two clouds canonicalise differently, one company becomes two and the multi-cloud signal — the strongest ICP evidence we have — silently breaks. |
 | `identity.py` | `SearchCandidate`, `select_candidate`, `dedupe_candidates`, `geo_status`, lookup-state vocabulary | Every partner directory is a fuzzy search engine. Forking this is how "confirmed" stops meaning the same thing on each cloud. |
 | `vendors_csv.py` | `VENDOR_COLUMNS`, `write_vendors_csv`, `read_vendors_csv` | The seam. Any cloud that emits a valid `vendors.csv` inherits Stages 3–5 unchanged. |
+| `build_cross_cloud.py` | Exact-key Azure/GCP union, conflict routing, CSV/XLSX export | Turns cloud outputs into one auditable company-level prospecting deliverable without inventing a shared ICP score. |
 
 Promoted from GCP when Azure landed (2026-09-07), per `../ARCHITECTURE.md`'s
 "promote on second use" rule.
@@ -72,5 +73,32 @@ Both Azure stages do:
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared"))
 ```
 
-`shared/` currently sits outside both cloud git repos and is tracked by
-nothing. See the "Known structural issue" section of `../Azure/AGENTS.md`.
+`shared/` is its own git repository. Both cloud repositories still import it
+by relative path, so a clone must place the three repositories as siblings.
+
+## Cross-cloud deliverable
+
+`build_cross_cloud.py` combines an Azure `azure_prospects.csv` with the GCP
+prospecting workbook. It first attaches GCP queue and evidence fields using the
+workbook's stored keys, then recomputes both clouds with the current shared
+`vendor_key`. Cross-cloud matching is exact-key only; names are never a fuzzy
+fallback.
+
+```bash
+python3 shared/build_cross_cloud.py \
+  --azure-csv Azure/azure_joined_output/2026-09-06/azure_prospects.csv \
+  --gcp-workbook GCP/gcp_shared_output/09-04/GCP_Prospecting_2026-09-04_v1.xlsx \
+  --output-prefix combined_output/2026-09-09/Cross_Cloud_Prospecting_2026-09-09_v1
+```
+
+The command writes matching `.xlsx` and `.csv` files and refuses to overwrite
+either one. The CSV is the complete `All Accounts` table. The workbook adds
+working, all-cross-cloud, existing-unowned, review, source-audit, and dictionary
+views. Source fields remain under `azure_*`, `gcp_*`, `gcp_queue_*`, or
+`gcp_audit_*`; raw listing evidence stays in the input GCP workbook.
+
+Run its tests from this repository:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
